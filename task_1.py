@@ -4,9 +4,6 @@ import pickle
 from abc import ABC, abstractmethod
 
 
-# Перша версія коду в якій реалізований абстрактний клас для можливості подальших змін функціоналу "асистента"
-# без змін в головному циклі коду, але з можливістю його розширення.
-
 def save_data(book, filename="addressbook.pkl"):
     with open(filename, "wb") as f:
         pickle.dump(book, f)
@@ -30,7 +27,6 @@ def input_error(func):
             return "Enter correct user name"
            
     return inner
-
 
 class Field:
     def __init__(self, value):
@@ -144,43 +140,13 @@ class AddressBook:
 
 class AbstractAssistant(ABC):
     @abstractmethod
-    def add_contact(self, args, book:AddressBook):
-        pass
-
-    @abstractmethod
-    def change_contact(self, args, book:AddressBook):
-        pass
-
-    @abstractmethod
-    def show_phone(self, args, book: AddressBook):
-        pass
-
-    @abstractmethod
-    def show_all(self, book: AddressBook):
-        pass
-
-    @abstractmethod
-    def add_birthday(self, args, book: AddressBook):
-        pass
-
-    @abstractmethod
-    def show_birthday(self, args, book: AddressBook):
-        pass
-
-    @abstractmethod
-    def birthdays(self, args, book: AddressBook):
+    def handle(self, args, book:AddressBook):
         pass
 
 
-class Assistant(AbstractAssistant):
+class AddContactAssistant(AbstractAssistant):
     @input_error
-    def parse_input(self, user_input):
-        cmd, *args = user_input.split()
-        cmd = cmd.strip().lower()
-        return cmd, *args
-      
-    @input_error
-    def add_contact(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         name, phone, *_ = args
         record = book.find(name)
         message = "Contact updated."
@@ -192,8 +158,10 @@ class Assistant(AbstractAssistant):
             record.add_phone(phone)
         return message
 
+
+class ChangeContactAssistant(AbstractAssistant):
     @input_error
-    def change_contact(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         name, new_phone, *_ = args
         record = book.find(name)
         if record:
@@ -204,22 +172,28 @@ class Assistant(AbstractAssistant):
                 raise ValueError("Enter the new phone number")
         else:
             raise KeyError("Enter correct user name")
+        
 
+class ShowPhoneAssistant(AbstractAssistant):
     @input_error
-    def show_phone(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         name = args[0]
         record = book.find(name)
         if record:
             return f"{name}`s phone {record.phones[0]}"
         else:
             return "Contact not found."
+        
 
+class ShowAllAssistant(AbstractAssistant):
     @input_error
-    def show_all(self, book: AddressBook):
+    def handle(self, book: AddressBook):
         return [str(record) for record in book.data.values()]
+    
 
+class AddBirthdayAssistant(AbstractAssistant):
     @input_error
-    def add_birthday(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         name, *_, birthday = args
         record = book.find(name)
         message = "Birthday added."
@@ -228,26 +202,32 @@ class Assistant(AbstractAssistant):
         if record:
             record.add_birthday(birthday)
         return message
+    
 
+class ShowBirthdayAssistant(AbstractAssistant):
     @input_error
-    def show_birthday(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         name = args[0]
         record = book.find(name)
         if record:
             return f"{name}`s birthday {record.birthday}"
         else:
             return "Contact not found."
-    
+        
+
+class BirthdaysAssistant(AbstractAssistant):    
     @input_error
-    def birthdays(self, args, book: AddressBook):
+    def handle(self, args, book: AddressBook):
         get_upcoming_birthdays = book.get_upcoming_birthdays()
         if get_upcoming_birthdays:
             return get_upcoming_birthdays
         else:
             return "No upcoming birthdays"
-        
+
+
+class ShowHelpAssistant(AbstractAssistant):        
     @input_error
-    def show_help(self):
+    def handle(self):
         commands = [
             "help - Show all commands",
             "add - Add a new contact",
@@ -265,35 +245,46 @@ class Assistant(AbstractAssistant):
 class AssistantForCustomer:
     def __init__(self):
         self.book = load_data()
-        self.assistant = Assistant()
+        self.assistant = {
+            "add": AddContactAssistant(),
+            "change": ChangeContactAssistant(),
+            "phone": ShowPhoneAssistant(),
+            "all": ShowAllAssistant(),
+            "add-birthday": AddBirthdayAssistant(),
+            "show-birthday": ShowBirthdayAssistant(),
+            "birthdays": BirthdaysAssistant(),
+            "help": ShowHelpAssistant()
+        }
+
+    @staticmethod
+    @input_error
+    def parse_input(user_input):
+        cmd, *args = user_input.split()
+        cmd = cmd.strip().lower()
+        return cmd, args
 
     def run(self):
         print("Welcome to the assistant bot!")
         while True:
             user_input = input("Enter a command: ")
             try:
-                command, *args = self.assistant.parse_input(user_input)
+                command, args = self.parse_input(user_input)
                 if command == "close" or command == "exit":
                     print("Good bye!")
                     break
+                elif command == "help":
+                    print("\n".join(self.assistant[command].handle()))                
+                elif command == "all":
+                    print("\n".join(self.assistant[command].handle(self.book)))
+                elif command in self.assistant:
+                    result = self.assistant[command].handle(args, self.book)
+                    if isinstance(result, list):
+                        for item in result:
+                            print(item)
+                    else:
+                        print(result)
                 elif command == "hello":
                     print("How can I help you?")
-                elif command == "add":
-                    print(self.assistant.add_contact(args, self.book))
-                elif command == "change":
-                    print(self.assistant.change_contact(args, self.book))
-                elif command == "phone":
-                    print(self.assistant.show_phone(args, self.book))
-                elif command == "all":
-                    print(self.assistant.show_all(self.book))
-                elif command == "add-birthday":
-                    print(self.assistant.add_birthday(args, self.book))
-                elif command == "show-birthday":
-                    print(self.assistant.show_birthday(args, self.book))
-                elif command == "birthdays":
-                    print(self.assistant.birthdays(args, self.book))
-                elif command == "help":
-                    print(self.assistant.show_help())
                 else:
                     print("Invalid command. Type 'help' for available commands.")
             except Exception as e:
@@ -301,9 +292,6 @@ class AssistantForCustomer:
                 
         save_data(self.book)
 
-
-
 if __name__ == "__main__":
-    bot = Assistant()
-    go_assistant = AssistantForCustomer()
-    go_assistant.run()
+    assistant = AssistantForCustomer()
+    assistant.run()
